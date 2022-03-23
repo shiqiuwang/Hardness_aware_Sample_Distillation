@@ -7,7 +7,8 @@ source code on SOP dataset in paper:Hardness-Aware Sample Distillation for Effic
 ### data preparation
 
 1. The original dataset and pre-training related files are in the release. First, you need to clone the source code to the local, and then go to release to download the relevant data and files and unzip them to the root directory.
-2. 
+2. you need to create the new folder named spld_pkl,then put the resnet_84.98.pkl and resnet_85.07.pkl which are uploaded in the realease.
+3. you need to create the new folder named datal,then put the alexnet-owt-4df8aa71.pth,inception_v3_google-1a9a5a14.pth,vgg16-397923af.pth, resnet50-19c8e357.pth which are uploaded in the realease. meanwhile,you'd better create the new folder named std_split_data,and unzip the train_0_5.rar,train_6_11.rar and valid.rar,after that,merge train_0-5 and train_6_11 to the folder train,and put the train and valid floder to the std_split_data floder.
 
 
 ### Related code file introduction
