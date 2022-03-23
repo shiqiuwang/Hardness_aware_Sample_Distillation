@@ -1,0 +1,237 @@
+#! /usr/bin/env python3
+
+from ast import Import
+import sys
+import torch
+import torchvision
+import torchvision.transforms as transforms
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+# import train_influence_functions as ext
+import torch.utils.data as Data
+# import dataset 
+# Source: https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html
+# Last access: 2019-11-20
+
+
+def load_data():
+    transform = transforms.Compose(
+        [transforms.ToTensor(),
+         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+
+    trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
+                                            download=True, transform=transform)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=4,
+                                              shuffle=True, num_workers=2)
+
+    testset = torchvision.datasets.CIFAR10(root='./data', train=False,
+                                           download=True, transform=transform)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=4,
+                                             shuffle=False, num_workers=2)
+
+    return trainloader, testloader
+
+
+class Net(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = x.view(-1, 16 * 5 * 5)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+
+def train(trainloader, testloader, net,epochs=1):
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
+
+    for epoch in range(epochs):  # loop over the dataset multiple times
+        running_loss = 0.0
+        for i, data in enumerate(trainloader, 0):
+            # get the inputs; data is a list of [inputs, labels]
+            #inputs, labels = data
+            inputs, labels = data[0].cuda(), data[1].cuda()
+
+            # zero the parameter gradients
+            optimizer.zero_grad()
+
+            # forward + backward + optimize
+            outputs = net(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+
+            # print statistics
+            running_loss += loss.item()
+            if i % 2000 == 1999:    # print every 2000 mini-batches
+                print('[%d, %5d] loss: %.3f' %
+                      (epoch + 1, i + 1, running_loss / 2000))
+                running_loss = 0.0
+
+    print('Finished Training')
+
+
+def save_model(net):
+    PATH = './lg_net_Corr.pth'
+    torch.save(net.state_dict(), PATH)
+
+
+def load_model():
+    PATH = './cifar_net.pth'
+    net = Net()
+    net.load_state_dict(torch.load(PATH))
+    net.cuda()
+    return net
+
+class Net2(nn.Module):
+    def __init__(self):
+        super(Net2, self).__init__()
+        self.fc1 = nn.Linear(784, 2)
+        self.smd=nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x=self.smd(x)
+        return x
+
+
+def test(testloader, net):
+    correct = 0
+    total = 0
+    class_correct = list(0. for i in range(10))
+    class_total = list(0. for i in range(10))
+    with torch.no_grad():
+        for data in testloader:
+            #images, labels = data
+            images, labels = data[0].cuda(), data[1].cuda()
+            outputs = net(images)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+            _, pred = torch.max(outputs, 1)
+            c = (pred == labels).squeeze()
+            # for i in range(4):
+            #     label = labels[i]
+            #     class_correct[label] += c[i].item()
+            #     class_total[label] += 1
+
+    print('Accuracy of the network on the 10000 test images: %f %%' % (
+        100 * float(correct) / total))
+    # classes = ('plane', 'car', 'bird', 'cat',
+    #            'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+    # for i in range(10):
+    #     print('Accuracy of %5s : %2d %%' % (
+    #         classes[i], 100 * class_correct[i] / class_total[i]))
+    
+import sys
+sys.path.append("/home/yr/基于黑盒/代码2/")
+
+import numpy as np
+import pytorch_influence_functions as ptif
+# import train_influence_functions as ext
+# Supplied by the user:
+import torch
+# import  dataset 
+import torch.utils.data as Data
+
+if __name__ == "__main__":
+    
+    trainloader, testloader = load_data()
+    
+    x_train,y_train,x_va,y_va,x_te,y_te = dataset.load_data_v1("mnist",va_ratio=0.3)
+    
+    
+    flip_ratio=0.5
+    # flip labels
+    idxs = np.arange(y_train.shape[0])
+    np.random.shuffle(idxs)
+    num_flip = int(flip_ratio * len(idxs))
+    y_train[idxs[:num_flip]] = np.logical_xor(np.ones(num_flip), y_train[idxs[:num_flip]]).astype(int)
+    
+    trainloader = Data.DataLoader(dataset=list(zip(x_train,y_train)), batch_size=32, shuffle=True)
+    testloader = Data.DataLoader(dataset=list(zip(x_va,y_va)), batch_size=1, shuffle=True)
+    test2loader = Data.DataLoader(dataset=list(zip(x_te,y_te)), batch_size=1, shuffle=True)
+    
+    model = Net2()
+    model.cuda()
+    train(trainloader, testloader, model,3)
+    test(testloader, model)
+    test(test2loader, model)
+    ptif.init_logging()
+    config = ptif.get_default_config()
+
+    sss = ptif.calc_img_wise(config, model, trainloader, testloader)
+    a=2
+    _1l=[]
+    _2l=[]
+    for i in range(len(sss['0']["influence"])):
+        if sss['0']["influence"][i]>0:
+            _1l.append(i)
+        else:
+            _2l.append(i)
+            
+    phi_ar = - np.array(sss['0']["influence"])
+    IF_interval = phi_ar.max() - phi_ar.min()
+    a_param = 2 / IF_interval
+    prob_pi = 1 / (1 + np.exp(a_param * phi_ar))
+    print("Pi Stats:",np.percentile(prob_pi,[10,25,50,75,90]))
+
+
+    trainloader = Data.DataLoader(dataset=np.array(list(zip(x_train,y_train)))[_2l].tolist(), batch_size=1, shuffle=True)
+    testloader = Data.DataLoader(dataset=list(zip(x_va,y_va)), batch_size=1, shuffle=True)
+    model2 = Net2()
+    model2.cuda()
+    train(trainloader, testloader, model2,10)
+    test(testloader, model2)
+    test(test2loader, model2)
+    
+    
+    train(trainloader, testloader, model,10)
+    test(testloader, model)
+    test(test2loader, model)
+
+    # new_x_tr=[]
+    # new_y_tr=[]
+    # for i in range(len(x_train)):
+    #     if i not in idxs[:num_flip]:
+    #         new_x_tr.append(x_train[i])
+    #         new_y_tr.append(y_train[i])
+    # new_x_tr=np.array(new_x_tr)
+    # new_y_tr=np.array(new_y_tr)
+    # trainloader = Data.DataLoader(dataset=np.array(list(zip(new_x_tr,new_y_tr))), batch_size=1, shuffle=True)
+    # model3 = ext.Net2()
+    # model3.cuda()
+    # train(trainloader, testloader, model3,10)
+    # test(testloader, model3)
+    # test(test2loader, model3)
+    
+    # new2_x_tr=[]
+    # new2_y_tr=[]
+    # idxs = np.arange(y_train.shape[0])
+    # np.random.shuffle(idxs)
+    # random=idxs[:len(5000)]
+    # for i in range(len(x_train)):
+    #     if i in random:
+    #         new2_x_tr.append(x_train[i])
+    #         new2_y_tr.append(y_train[i])
+    # new2_x_tr=np.array(new2_x_tr)
+    # new2_y_tr=np.array(new2_y_tr)
+    # trainloader = Data.DataLoader(dataset=np.array(list(zip(new2_x_tr,new2_y_tr))), batch_size=1, shuffle=True)
+    # model3 = ext.Net2()
+    # model3.cuda()
+    # train(trainloader, testloader, model3,10)
+    # test(testloader, model3)
+    # test(test2loader, model3)
+    
